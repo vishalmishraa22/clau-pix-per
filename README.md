@@ -4,24 +4,99 @@
 
 An iterative diff loop that compares your running UI against a Figma frame and drives the implementation to **under 2% pixel mismatch**. Uses the Figma REST API for the design, Playwright for the browser, [sharp](https://sharp.pixelplumbing.com/) to normalize, [pngjs](https://www.npmjs.com/package/pngjs) to decode, and [pixelmatch](https://www.npmjs.com/package/pixelmatch) for the diff itself. Bails out with a concrete multi-choice question if it gets stuck — never spins forever.
 
-## Install
+## Install — step by step
 
-Paste a Figma URL into Claude Code and say "match this to localhost:3000". That's the whole UX. The skill is shipped as a single Claude Code plugin, no manual setup.
+Total time: ~3 minutes, one-time per machine.
 
-### One-time setup per machine
+### Step 1 — Install the Figma MCP server (prerequisite)
+
+This plugin needs the Figma MCP server to read design context and text bounding boxes. If you already have it, skip to Step 2.
+
+Follow Figma's guide: <https://help.figma.com/hc/en-us/articles/32132100833559-Guide-to-the-Figma-MCP-server>
+
+Verify it's registered by running this **in your terminal**:
+
+```bash
+cat ~/.claude/mcp_servers.json | grep -i figma
+```
+
+You should see a figma entry. If not, the plugin will fail its preflight and tell you to install it.
+
+### Step 2 — Add the marketplace (inside Claude Code)
+
+Open Claude Code, then in the Claude Code prompt type:
 
 ```
 /plugin marketplace add vishalmishraa22/clau-pix-per
+```
+
+### Step 3 — Install the plugin (inside Claude Code)
+
+Still in the Claude Code prompt:
+
+```
 /plugin install pixel-perfect@clau-pix-per
 /reload-plugins
 ```
 
-### On first real use, the skill auto-bootstraps
+At this point the plugin is registered but Node dependencies are not installed yet. That happens automatically on first use.
 
-- ~60–90s to install `node_modules` + Playwright Chromium (once, ever)
-- ~30s to paste a Figma Personal Access Token (once, per machine)
+### Step 4 — Get a Figma Personal Access Token
 
-Both happen inline in the transcript. Subsequent runs have zero overhead.
+1. Open <https://www.figma.com/settings> in your browser
+2. Go to **Security** → **Personal access tokens**
+3. Click **Generate new token**
+4. Scope: **`file_content:read`** (read-only; the skill never writes to your Figma files)
+5. Copy the token — it starts with `figd_`
+
+### Step 5 — Save the token (in your terminal)
+
+Run this **in your terminal** (not inside Claude Code). Replace `figd_xxx_paste_your_token_here` with the token you just copied:
+
+```bash
+mkdir -p ~/.claude/pixel-perfect && umask 077 && printf '%s\n' 'figd_xxx_paste_your_token_here' > ~/.claude/pixel-perfect/.figma-token
+```
+
+What this does:
+- `mkdir -p ~/.claude/pixel-perfect` — creates the config directory (ok if it already exists)
+- `umask 077` — ensures the token file is only readable by you (mode 600)
+- `printf '%s\n' '…'` — writes the token to the file
+- `~/.claude/pixel-perfect/.figma-token` — the stable location the plugin reads from (survives plugin updates and cache wipes)
+
+Verify it saved correctly:
+
+```bash
+ls -la ~/.claude/pixel-perfect/.figma-token
+# should show: -rw------- (mode 600) and non-zero size
+```
+
+### Step 6 — First real use
+
+Back in Claude Code, paste any Figma frame URL with a prompt like:
+
+```
+Match this to localhost:3000 → https://www.figma.com/design/ABC.../MyFile?node-id=1-23
+```
+
+On this first run only, you'll see:
+
+```
+[pixel-perfect bootstrap] installing dependencies into .../skills/pixel-perfect (one-time, ~60-90s)...
+  added 16 packages
+[pixel-perfect bootstrap] downloading Playwright Chromium (~200 MB, ~30-60s)...
+[pixel-perfect bootstrap] done. Dependencies ready.
+```
+
+Then the iterative diff loop runs. Every subsequent run has zero setup overhead — just the diff.
+
+### Quick troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Preflight says "Figma MCP server required" | Re-do Step 1, then restart Claude Code |
+| `fetch-figma.mjs` exits with `NO_TOKEN` | Re-do Step 5, make sure the file ends with `.figma-token` (leading dot) |
+| `npm install` fails in bootstrap | Check `node --version` — must be >= 20. Run `nvm install 20` or `brew upgrade node` |
+| Chromium download fails | Re-run bootstrap manually: `cd ~/.claude/plugins/cache/*/clau-pix-per/*/skills/pixel-perfect && npx playwright install chromium` |
 
 ## Prerequisites
 
