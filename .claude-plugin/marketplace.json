@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "clau-pix-per",
+  "owner": {
+    "name": "vishalmishraa22",
+    "email": "vishal.kumar.mishra@infinitelocus.com",
+    "url": "https://github.com/vishalmishraa22"
+  },
+  "plugins": [
+    {
+      "name": "pixel-perfect",
+      "source": "./",
+      "description": "Iterative Figma-vs-browser pixel-perfect visual diff. Targets <2% mismatch with automatic masking and stuck-loop bail-out.",
+      "version": "0.1.0"
+    }
+  ]
+}

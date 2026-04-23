@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "impl_url": null,
+  "selector": null,
+  "viewport": { "width": null, "height": null },
+  "dev_command": null,
+  "dev_port": null,
+  "framework": null,
+  "thresholds": {
+    "global_max_mismatch_pct": 2.0,
+    "pixelmatch_threshold": 0.1,
+    "text_pixelmatch_threshold": 0.3,
+    "text_color_deltaE_max": 3.0
+  },
+  "masks": {
+    "selectors": ["[data-dynamic]"],
+    "mask_scrollbar": true,
+    "mask_carets": true
+  },
+  "frame_map": {}
+}

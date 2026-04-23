@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin.json",
+  "name": "pixel-perfect",
+  "version": "0.1.0",
+  "description": "Iterative Figma-vs-browser pixel-perfect visual diff. Uses Figma REST API, Playwright, sharp, pngjs, and pixelmatch. Targets <2% mismatch with automatic masking, stuck-loop bail-out, and concurrent-session-safe cleanup.",
+  "author": {
+    "name": "vishalmishraa22",
+    "email": "vishal.kumar.mishra@infinitelocus.com",
+    "url": "https://github.com/vishalmishraa22"
+  },
+  "homepage": "https://github.com/vishalmishraa22/clau-pix-per",
+  "repository": "https://github.com/vishalmishraa22/clau-pix-per",
+  "license": "MIT",
+  "keywords": ["figma", "pixel-perfect", "visual-diff", "playwright", "design-to-code", "claude-code-plugin"]
+}
