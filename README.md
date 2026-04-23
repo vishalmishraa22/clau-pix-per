@@ -1,5 +1,12 @@
 # clau-pix-per
 
+[![Visits](https://hits.sh/github.com/vishalmishraa22/clau-pix-per.svg?style=flat-square&label=visits&color=6f42c1)](https://hits.sh/github.com/vishalmishraa22/clau-pix-per/)
+[![Stars](https://img.shields.io/github/stars/vishalmishraa22/clau-pix-per?style=flat-square&logo=github)](https://github.com/vishalmishraa22/clau-pix-per/stargazers)
+[![Forks](https://img.shields.io/github/forks/vishalmishraa22/clau-pix-per?style=flat-square&logo=github)](https://github.com/vishalmishraa22/clau-pix-per/network/members)
+[![Issues](https://img.shields.io/github/issues/vishalmishraa22/clau-pix-per?style=flat-square)](https://github.com/vishalmishraa22/clau-pix-per/issues)
+[![License](https://img.shields.io/github/license/vishalmishraa22/clau-pix-per?style=flat-square)](LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/vishalmishraa22/clau-pix-per?style=flat-square)](https://github.com/vishalmishraa22/clau-pix-per/commits/main)
+
 > Pixel-perfect Figma-to-browser visual diff — a Claude Code plugin.
 
 An iterative diff loop that compares your running UI against a Figma frame and drives the implementation to **under 2% pixel mismatch**. Uses the Figma REST API for the design, Playwright for the browser, [sharp](https://sharp.pixelplumbing.com/) to normalize, [pngjs](https://www.npmjs.com/package/pngjs) to decode, and [pixelmatch](https://www.npmjs.com/package/pixelmatch) for the diff itself. Bails out with a concrete multi-choice question if it gets stuck — never spins forever.
