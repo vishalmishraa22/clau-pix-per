@@ -1,0 +1,53 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/node-hook-runner.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/iteration-context.cjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/node-hook-runner.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/subagent-context.cjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/node-hook-runner.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/figma-token-check.cjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/node-hook-runner.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/session-cleanup.cjs\"",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/node-hook-runner.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/completion-notify.cjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

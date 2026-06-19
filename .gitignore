@@ -16,3 +16,4 @@ skills/pixel-perfect/bin/.figma-token
 *.swp
 .idea/
 .vscode/
+graphify-out
