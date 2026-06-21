@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyMasks } from '../bin/lib/masks.mjs';
+import { applyMasks, countMaskedPixels, maskProvenance, scrollbarMask } from '../bin/lib/masks.mjs';
 
 function makeBuf(width, height, fill = [255, 255, 255, 255]) {
   const buf = new Uint8ClampedArray(width * height * 4);
@@ -31,4 +31,37 @@ test('applyMasks ignores empty mask list', () => {
   const buf = makeBuf(4, 4);
   applyMasks(buf, 4, 4, []);
   assert.equal(buf[0], 255);
+});
+
+test('countMaskedPixels sums a single rectangle', () => {
+  assert.equal(countMaskedPixels(100, 100, [{ x: 0, y: 0, w: 10, h: 10 }]), 100);
+});
+
+test('countMaskedPixels does not double-count overlapping masks', () => {
+  // Two 10x10 masks sharing a 5x10 overlap → union = 150, not 200.
+  const masks = [
+    { x: 0, y: 0, w: 10, h: 10 },
+    { x: 5, y: 0, w: 10, h: 10 },
+  ];
+  assert.equal(countMaskedPixels(100, 100, masks), 150);
+});
+
+test('countMaskedPixels clamps to frame bounds', () => {
+  assert.equal(countMaskedPixels(10, 10, [{ x: 5, y: 5, w: 100, h: 100 }]), 25);
+});
+
+test('countMaskedPixels is 0 for empty list', () => {
+  assert.equal(countMaskedPixels(10, 10, []), 0);
+});
+
+test('maskProvenance itemizes bbox, pixels, and source', () => {
+  const prov = maskProvenance(100, 100, [
+    { x: 2, y: 3, w: 4, h: 5, source: 'selector', selector: '.avatar' },
+    { x: 0, y: 0, w: 8, h: 8, note: 'team removed banner' },
+    scrollbarMask(100, 100),
+  ]);
+  assert.deepEqual(prov[0], { bbox: [2, 3, 4, 5], pixels: 20, source: 'selector', selector: '.avatar' });
+  assert.equal(prov[1].source, 'manual'); // no source → manual
+  assert.equal(prov[1].note, 'team removed banner');
+  assert.equal(prov[2].source, 'scrollbar');
 });

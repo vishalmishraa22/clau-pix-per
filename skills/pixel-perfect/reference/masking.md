@@ -1,5 +1,32 @@
 # Masking Reference
 
+## The one rule
+
+**Masking is ONLY for content that genuinely cannot match run-to-run, or a delta the team has deliberately and explicitly chosen.** That means:
+
+- Dynamic/volatile content: countdown timers, live counters, clocks, relative timestamps.
+- Rendering artifacts the diff can't normalize: scrollbars, text carets, focus rings.
+- Case-by-case: content the team has *deliberately changed* from the design — and only with an explicit `note` on the mask justifying it.
+
+**Do NOT mask static layout to make a bad implementation pass.** Masking the banner, plan rows, CTA, or other static regions to push `mismatch_pct` under 2% is cheating — the differing pixels still exist, you've just stopped counting them. The skill now makes this visible and blocks it (see "Honesty guarantees" below).
+
+Every mask must be itemized. Each entry in `report.masks[]` carries its `bbox`, `pixels`, and `source` (`selector` / `scrollbar` / `caret` / `manual`); deliberate design-delta masks must also carry a `note`.
+
+## Honesty guarantees (enforced by diff.mjs)
+
+- **Masked area is always reported.** `report.result.masked_pct` (of the full frame) and `report.masks_applied` are printed in the iteration summary every run — you always see "X% masked".
+- **Masked-area guardrail.** If `masked_pct` exceeds `thresholds.max_masked_pct` (default **15%**, configurable in `pixel-perfect.json`), the run **cannot pass**: `passed` is forced `false` and `result.warning = "excessive_masking"`. This holds regardless of how low `mismatch_pct` is.
+- **Dual mismatch numbers.** Besides the full-frame `mismatch_pct` (`mismatched / total`), the report includes `mismatch_pct_unmasked_basis` (`mismatched / (total − masked)`). The unmasked basis cannot be deflated by masking, so a high value there exposes a high density of differences hiding in a small visible area.
+- **Pass requires BOTH** `mismatch_pct < max_mismatch_pct` AND `masked_pct < max_masked_pct`.
+
+### Tuning the cap
+
+```json
+{ "thresholds": { "max_masked_pct": 15.0 } }
+```
+
+Raise it only with a real justification (e.g. a design that is legitimately mostly dynamic content). If you find yourself wanting to raise the cap to make a layout pass, fix the layout instead.
+
 ## Why masks exist
 
 Figma renders text with its own hinter; Chromium uses a different one. Same font, same size, same color → different subpixel antialiasing → 3-8% "mismatch" on text-heavy UIs that's not actually a bug. Masking levels the playing field.
@@ -23,7 +50,7 @@ Behavior: Playwright resolves to bboxes. Added to `--masks` array. Fully ignored
 
 ## When masks go wrong
 
-- **Over-masking** — diff passes but implementation is broken. Blue overlay in diff.png too large → tighten selectors.
+- **Over-masking** — diff looks like it passes but the implementation is broken. Signals: large blue overlay in diff.png; high `masked_pct`; `mismatch_pct` low but `mismatch_pct_unmasked_basis` high; `result.warning = "excessive_masking"`. Fix the implementation or tighten selectors — do not raise the cap to get a green.
 - **Under-masking** — diff fails on AA noise. Check text bboxes are wide enough (+4px padding helps).
 
 ## Adding a new dynamic mask

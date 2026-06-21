@@ -79,7 +79,8 @@ blanks):
     "global_max_mismatch_pct": 2.0,
     "pixelmatch_threshold": 0.1,
     "text_pixelmatch_threshold": 0.3,
-    "text_color_deltaE_max": 3.0
+    "text_color_deltaE_max": 3.0,
+    "max_masked_pct": 15.0
   },
   "masks": { "selectors": ["[data-dynamic]"], "mask_scrollbar": true, "mask_carets": true },
   "frame_map": {}
@@ -87,7 +88,11 @@ blanks):
 ```
 
 Confirm masks with the user: text bounding boxes from `get_metadata`, any dynamic-content
-selectors, and scrollbar/caret masking.
+selectors, and scrollbar/caret masking. Masking is ONLY for dynamic content
+(timers/scrollbars/carets) or an explicitly-justified design delta — never to hide
+static layout differences. The `max_masked_pct` cap (default 15%) is a hard guardrail:
+if total masking exceeds it the run cannot pass, regardless of mismatch_pct. Keep the
+mask selector list as tight as possible.
 
 ## Phase 6: Summary
 

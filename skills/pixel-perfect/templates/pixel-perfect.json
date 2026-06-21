@@ -10,7 +10,8 @@
     "global_max_mismatch_pct": 2.0,
     "pixelmatch_threshold": 0.1,
     "text_pixelmatch_threshold": 0.3,
-    "text_color_deltaE_max": 3.0
+    "text_color_deltaE_max": 3.0,
+    "max_masked_pct": 15.0
   },
   "masks": {
     "selectors": ["[data-dynamic]"],

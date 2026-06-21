@@ -15,6 +15,11 @@ export function defaultConfig() {
       pixelmatch_threshold: 0.1,
       text_pixelmatch_threshold: 0.3,
       text_color_deltaE_max: 3.0,
+      // Masked-area guardrail. If masked_pct of the full frame exceeds this,
+      // the run CANNOT pass regardless of mismatch_pct — masking large static
+      // layout to clear the gate is cheating. Masks are only for dynamic
+      // content (timers/scrollbars/carets) + explicitly-justified design deltas.
+      max_masked_pct: 15.0,
     },
     masks: {
       selectors: ['[data-dynamic]'],

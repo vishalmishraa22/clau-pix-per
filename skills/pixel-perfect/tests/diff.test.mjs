@@ -20,7 +20,7 @@ test('identical PNGs produce 0% mismatch', async () => {
   await solidPng(50, 50, [120, 120, 120], a);
   await solidPng(50, 50, [120, 120, 120], b);
   const report = await runDiff({
-    design: a, impl: b, outDir: join(dir, 'r-ident'), threshold: 0.1, masks: [],
+    design: a, impl: b, outDir: join(dir, 'r-ident'), threshold: 0.1, masks: [], maskScrollbar: false,
   });
   assert.equal(report.result.mismatched_pixels, 0);
   assert.equal(report.result.passed, true);
@@ -63,6 +63,59 @@ test('masked regions are ignored in diff count', async () => {
   });
   assert.ok(unmasked.result.mismatch_pct > 40);
   assert.ok(masked.result.mismatch_pct < 1);
+});
+
+test('report carries masked_pixels, masked_pct, unmasked basis, and provenance', async () => {
+  const a = join(dir, 'pa.png'), b = join(dir, 'pb.png');
+  await solidPng(40, 40, [0, 0, 0], a);
+  await solidPng(40, 40, [0, 0, 0], b);
+  const report = await runDiff({
+    design: a, impl: b, outDir: join(dir, 'r-fields'), threshold: 0.1, maskScrollbar: false,
+    masks: [{ x: 0, y: 0, w: 10, h: 40, source: 'selector', selector: '.x' }],
+  });
+  const r = report.result;
+  assert.equal(r.total_pixels, 1600);
+  assert.equal(r.masked_pixels, 400);
+  assert.equal(r.masked_pct, 25);              // 400 / 1600
+  assert.equal(r.visible_pixels, 1200);
+  assert.equal('mismatch_pct_unmasked_basis' in r, true);
+  assert.equal(report.masks_applied, 1);
+  assert.deepEqual(report.masks[0], { bbox: [0, 0, 10, 40], pixels: 400, source: 'selector', selector: '.x' });
+});
+
+test('GUARDRAIL: over-masking cannot pass even at near-zero mismatch_pct (production bug repro)', async () => {
+  // Two images differ across the full frame, but we mask ~60% of it. The
+  // surviving difference is small as a fraction of the FULL frame, so the
+  // legacy mismatch_pct looks tiny — yet the run must NOT pass.
+  const a = join(dir, 'ga.png'), b = join(dir, 'gb.png');
+  await solidPng(100, 100, [0, 0, 0], a);
+  await solidPng(100, 100, [255, 255, 255], b); // 100% different before masking
+  const report = await runDiff({
+    design: a, impl: b, outDir: join(dir, 'r-guard'), threshold: 0.1, maskScrollbar: false,
+    maxMaskedPct: 15.0,
+    // Mask 60 of 100 columns → 60% of the frame.
+    masks: [{ x: 0, y: 0, w: 60, h: 100, source: 'manual' }],
+  });
+  const r = report.result;
+  assert.equal(r.masked_pct, 60);
+  // Unmasked basis exposes that the visible area is 100% wrong.
+  assert.ok(r.mismatch_pct_unmasked_basis > 99, `unmasked basis ${r.mismatch_pct_unmasked_basis}`);
+  assert.equal(r.passed, false);
+  assert.equal(r.warning, 'excessive_masking');
+});
+
+test('GUARDRAIL: low-mismatch run with masking under the cap still passes', async () => {
+  const a = join(dir, 'oka.png'), b = join(dir, 'okb.png');
+  await solidPng(100, 100, [10, 10, 10], a);
+  await solidPng(100, 100, [10, 10, 10], b);
+  const report = await runDiff({
+    design: a, impl: b, outDir: join(dir, 'r-ok'), threshold: 0.1, maskScrollbar: false,
+    maxMaskedPct: 15.0,
+    masks: [{ x: 0, y: 0, w: 10, h: 100, source: 'scrollbar' }], // 10% masked, under cap
+  });
+  assert.equal(report.result.masked_pct, 10);
+  assert.equal(report.result.passed, true);
+  assert.equal('warning' in report.result, false);
 });
 
 test('writes diff.png and report.json to outDir', async () => {

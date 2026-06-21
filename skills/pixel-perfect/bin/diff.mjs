@@ -5,7 +5,7 @@ import { Command } from 'commander';
 import sharp from 'sharp';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
-import { applyMasks, overlayDiff, scrollbarMask } from './lib/masks.mjs';
+import { applyMasks, overlayDiff, scrollbarMask, countMaskedPixels, maskProvenance } from './lib/masks.mjs';
 
 async function normalizeToSize(filePath, targetWidth, targetHeight) {
   const resized = await sharp(filePath)
@@ -27,6 +27,7 @@ async function encodePng(width, height, data, outPath) {
 export async function runDiff({
   design, impl, outDir, threshold = 0.1, masks = [],
   maskScrollbar = true, frame = {}, iteration = 1,
+  maxMismatchPct = 2.0, maxMaskedPct = 15.0,
 }) {
   await mkdir(outDir, { recursive: true });
 
@@ -60,20 +61,53 @@ export async function runDiff({
   await copyFile(impl, implOutPath);
 
   const totalPixels = width * height;
+  const maskedPixels = countMaskedPixels(width, height, effectiveMasks);
+  const visiblePixels = Math.max(0, totalPixels - maskedPixels);
+
+  // Full-frame basis: masked pixels never differ (both images are blacked
+  // out there) but they STILL inflate the denominator, so over-masking
+  // drives this number toward zero. Kept for backward compatibility.
   const mismatchPct = (mismatchedPixels / totalPixels) * 100;
+  // Unmasked basis: mismatched pixels over the pixels actually compared.
+  // Over-masking cannot hide a high density of differences in the visible
+  // area here — this is the honest "how wrong is what we DID compare" number.
+  const mismatchPctUnmasked = visiblePixels > 0
+    ? (mismatchedPixels / visiblePixels) * 100
+    : 0;
+  const maskedPct = (maskedPixels / totalPixels) * 100;
+
+  const overMasked = maskedPct > maxMaskedPct;
+  // Pass requires BOTH a low mismatch AND that we didn't mask our way there.
+  const passed = mismatchPct < maxMismatchPct && !overMasked;
+
+  const result = {
+    mismatch_pct: Number(mismatchPct.toFixed(3)),
+    mismatch_pct_unmasked_basis: Number(mismatchPctUnmasked.toFixed(3)),
+    mismatched_pixels: mismatchedPixels,
+    total_pixels: totalPixels,
+    masked_pixels: maskedPixels,
+    masked_pct: Number(maskedPct.toFixed(3)),
+    visible_pixels: visiblePixels,
+    passed,
+  };
+  if (overMasked) {
+    result.warning = 'excessive_masking';
+    result.warning_detail =
+      `masked_pct ${maskedPct.toFixed(1)}% exceeds cap ${maxMaskedPct}% — ` +
+      `run fails regardless of mismatch_pct. Masking must be limited to dynamic ` +
+      `content (timers/scrollbars/carets) or explicitly-justified design deltas, ` +
+      `not static layout.`;
+  }
 
   const report = {
     run_id: basename(outDir),
     iteration,
     frame,
     capture: { width, height },
-    result: {
-      mismatch_pct: Number(mismatchPct.toFixed(3)),
-      mismatched_pixels: mismatchedPixels,
-      total_pixels: totalPixels,
-      passed: mismatchPct < 2.0,
-    },
+    thresholds: { max_mismatch_pct: maxMismatchPct, max_masked_pct: maxMaskedPct },
+    result,
     masks_applied: effectiveMasks.length,
+    masks: maskProvenance(width, height, effectiveMasks),
     artifacts: {
       design: designOutPath,
       impl: implOutPath,
@@ -93,7 +127,10 @@ async function main() {
     .requiredOption('--impl <path>', 'Path to implementation PNG')
     .requiredOption('--out <dir>', 'Output directory for diff artifacts')
     .option('--threshold <n>', 'pixelmatch threshold (0-1)', '0.1')
-    .option('--masks <json>', 'JSON array of mask rectangles [{x,y,w,h},...]', '[]')
+    .option('--masks <json>', 'JSON array of mask rectangles [{x,y,w,h,source?,selector?,note?},...]', '[]')
+    .option('--max-mismatch <n>', 'Pass ceiling for mismatch_pct', '2.0')
+    .option('--max-masked <n>', 'Guardrail: masked_pct cap above which the run cannot pass', '15.0')
+    .option('--no-scrollbar', 'Do not auto-mask the scrollbar column')
     .option('--iteration <n>', 'Iteration number', '1');
   program.parse(process.argv);
   const opts = program.opts();
@@ -105,9 +142,19 @@ async function main() {
     outDir: opts.out,
     threshold: Number(opts.threshold),
     masks: JSON.parse(opts.masks),
+    maskScrollbar: opts.scrollbar !== false,
+    maxMismatchPct: Number(opts.maxMismatch),
+    maxMaskedPct: Number(opts.maxMasked),
     iteration: Number(opts.iteration),
   });
   report.duration_ms = Date.now() - started;
+  const r = report.result;
+  const verdict = r.passed ? 'PASS' : 'FAIL';
+  let summary = `[diff] iter ${report.iteration}: ${r.mismatch_pct}% mismatch ` +
+    `(${r.mismatch_pct_unmasked_basis}% of visible area) · ` +
+    `${report.masks_applied} masks, ${r.masked_pct}% masked · ${verdict}`;
+  if (r.warning) summary += ` · WARNING: ${r.warning}`;
+  console.error(summary);
   console.log(JSON.stringify(report, null, 2));
 }
 

@@ -52,3 +52,38 @@ test('capture falls back to viewport when selector missing', async () => {
   assert.equal(meta.width, 640);
   assert.equal(meta.height, 400);
 });
+
+test('waitForNetworkIdle:false captures against a server that never goes idle (HMR repro)', async () => {
+  // Simulate an HMR dev server: the page opens an EventSource/long-poll that
+  // keeps a request open forever, so 'networkidle' would never fire and a
+  // networkidle-based goto would time out. waitForNetworkIdle:false must
+  // still capture via domcontentloaded + settle.
+  const hmrHtml = `<!doctype html><html><head><style>body{margin:0;background:#0a0;}
+    #box{width:100px;height:100px;background:#fff;margin:10px}</style></head>
+    <body><div id="box"></div>
+    <script>new EventSource('/__hmr');</script></body></html>`;
+  const hmrServer = createServer((req, res) => {
+    if (req.url === '/__hmr') {
+      // Never-ending SSE stream → network is never idle.
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+      res.write(': keep-alive\n\n');
+      return; // intentionally leave the response open
+    }
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end(hmrHtml);
+  });
+  await new Promise(r => hmrServer.listen(0, r));
+  const hmrUrl = `http://127.0.0.1:${hmrServer.address().port}`;
+  try {
+    const out = join(tmp, 'hmr.png');
+    await capture({
+      url: hmrUrl, selector: '#box', viewport: { width: 400, height: 300 },
+      out, waitForNetworkIdle: false, settleMs: 200,
+    });
+    const meta = await sharp(out).metadata();
+    assert.equal(meta.width, 100);
+    assert.equal(meta.height, 100);
+  } finally {
+    await new Promise(r => hmrServer.close(r));
+  }
+});

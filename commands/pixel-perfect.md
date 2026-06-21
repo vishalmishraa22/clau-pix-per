@@ -63,8 +63,17 @@ c. mcp__claude_ai_Figma__get_metadata         → extract text-node bboxes for m
 d. If design.png width > figma_frame_width, crop with sharp.extract to frame_width×frame_height.
 e. target_viewport_width = figma_frame_width
 f. node $BIN/capture.mjs --url <impl_url> --selector <selector> --width <target_viewport_width> --out $RUN/iter0-impl.png
-g. node $BIN/diff.mjs --design $RUN/design.png --impl $RUN/iter0-impl.png --out $RUN/iter0 --threshold <config threshold> --masks <bbox-json> --iteration 0
+   Add `--no-network-idle` when `impl_url` is an HMR dev server (Nuxt/Vite/etc.):
+   the open HMR websocket means 'networkidle' never fires and capture would time out.
+   With the flag, capture waits for `domcontentloaded` + a settle delay (`--settle <ms>`, default 500).
+g. node $BIN/diff.mjs --design $RUN/design.png --impl $RUN/iter0-impl.png --out $RUN/iter0 --threshold <config threshold> --max-masked <config thresholds.max_masked_pct, default 15> --masks <bbox-json> --iteration 0
    → parse stdout report. This is baseline_mismatch.
+   `<bbox-json>` is a JSON array of `{x,y,w,h,source,note?}`. EVERY mask must
+   carry a `source` (`selector` | `scrollbar` | `caret` | `manual`); a deliberate
+   design-delta mask must also carry a `note` justifying it. Masking is ONLY for
+   dynamic content (timers/scrollbars/carets) or explicitly-justified deltas —
+   NEVER mask static layout to lower the mismatch. The report echoes every mask
+   in `report.masks[]` and reports `report.result.masked_pct`.
 h. node $BIN/results.mjs append --project <projectDir> --iteration 0 --mismatch <pct> --status baseline
 ```
 
@@ -77,13 +86,21 @@ For each iteration `i`, run these phases in order:
 
 1. **Review** — read recent `git log --oneline -5` and `node $BIN/results.mjs tail --project <projectDir>`
    as memory. Do not repeat an edit that a prior row shows already regressed.
-2. **Capture** — `node $BIN/capture.mjs --url <impl_url> --selector <selector> --width <target_viewport_width> --out $RUN/iter<i>-impl.png`.
-3. **Diff** — `node $BIN/diff.mjs --design $RUN/design.png --impl $RUN/iter<i>-impl.png --out $RUN/iter<i> --threshold <config threshold> --masks <bbox-json> --iteration <i>`. Parse stdout → `report`.
-4. **Analyze + Fix** — if `report.result.mismatch_pct >= 2.0`: inspect `$RUN/iter<i>/diff.png`,
-   identify the top region(s) of concern, and edit the component source.
+2. **Capture** — `node $BIN/capture.mjs --url <impl_url> --selector <selector> --width <target_viewport_width> --out $RUN/iter<i>-impl.png`. Pass `--no-network-idle` for HMR dev servers (Nuxt/Vite) — see §4f.
+3. **Diff** — `node $BIN/diff.mjs --design $RUN/design.png --impl $RUN/iter<i>-impl.png --out $RUN/iter<i> --threshold <config threshold> --max-masked <config thresholds.max_masked_pct, default 15> --masks <bbox-json> --iteration <i>`. Parse stdout → `report`. Note `report.result.masked_pct` and report it to the user this iteration.
+4. **Analyze + Fix** — success requires BOTH `report.result.mismatch_pct < 2.0` AND
+   `report.result.passed === true` (the latter also enforces the masked-area cap).
+   If NOT passed: inspect `$RUN/iter<i>/diff.png`, identify the top region(s) of
+   concern, and edit the component source.
+   - If `report.result.warning === "excessive_masking"` (masked_pct over the cap):
+     do NOT treat this as near-passing. Remove masks that cover static layout and
+     FIX the underlying implementation; never widen masks or raise `max_masked_pct`
+     to get a green.
+   - If `mismatch_pct` is low but `mismatch_pct_unmasked_basis` is high, the visible
+     area is still wrong — keep fixing, don't mask more.
    For `i >= 3`, dispatch a `general-purpose` subagent with design.png, iter<i>-impl.png,
    diff.png, report.json, and the component source; ask for a precise edit list and apply it.
-   If `mismatch_pct < 2.0`: skip to Summary (§7) — success.
+   If `report.result.passed === true`: skip to Summary (§7) — success.
 5. **Commit** — `git add -A && git commit -m "pixel-perfect iter<i>: <region> (<mismatch>%)"`
    BEFORE re-verifying, so a regression can be reverted to a known-good state.
 6. **Verify** — re-capture and re-diff (repeat phases 2–3 against the committed code) →
@@ -103,7 +120,7 @@ Update `previous_mismatch_pct` to the kept value before the next iteration.
 
 Bail and go to Summary if any holds:
 
-- `mismatch_pct < 2.0` → **success**.
+- `report.result.passed === true` (i.e. `mismatch_pct < 2.0` AND `masked_pct` under the cap) → **success**. A low `mismatch_pct` with `passed === false` is NOT success — it means the masked-area guardrail tripped.
 - Iteration cap reached.
 - Mismatch failed to decrease for 2 consecutive iterations (`stuck >= 2`).
 - Mismatch oscillates (up-down-up) over 3 iterations without converging.
@@ -111,7 +128,10 @@ Bail and go to Summary if any holds:
 
 On any bail-without-success, present the last 3 reports + diff.png path and ask a concrete
 multi-choice question:
-(a) apply my best hypothesis and re-run · (b) mask `<stuck region>` and accept ·
+(a) apply my best hypothesis and re-run · (b) mask `<stuck region>` and accept —
+ONLY offer this if the region is genuinely dynamic content (timer/scrollbar/caret)
+or a deliberate design delta, and note that masking still counts toward the
+`masked_pct` cap (it will not pass if it pushes total masking over the cap) ·
 (c) you inspect diff.png and guide me · (d) abort, restore last good state.
 Then defer to `/pixel-perfect:debug` if the user wants deeper diagnosis. Do not iterate
 further without user input.
@@ -123,9 +143,15 @@ Print the report card:
 ```
 Pixel-perfect: <frame name> (<width>px)
   Iteration <n>/<cap> — <mismatch>% mismatch <✓ PASS | ✗ FAIL>
+  Masked: <masked_pct>% of frame across <masks_applied> masks  (cap <max_masked_pct>%)
+  Visible-area mismatch: <mismatch_pct_unmasked_basis>%
+  <if warning: ⚠ EXCESSIVE MASKING — masked_pct over cap, run cannot pass>
 
   Top regions of concern:
     • <pct>% — <note> (bbox x,y → x+w,y+h)
+
+  Masks applied (from report.masks[]):
+    • <source> <bbox> <selector/note if any>
 
   Trend: <baseline>% → … → <final>%   (logged to .pixel-perfect/results.tsv)
   Artifacts: $RUN/   (design.png · impl.png · diff.png · report.json)

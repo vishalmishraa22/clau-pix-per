@@ -17,7 +17,7 @@ const ANTI_MOTION_CSS = `
 
 export async function capture({
   url, selector, viewport = { width: 1440, height: 900 }, out,
-  waitForNetworkIdle = true, waitForFonts = true,
+  waitForNetworkIdle = true, waitForFonts = true, settleMs = 500,
 }) {
   await mkdir(dirname(out), { recursive: true });
   const browser = await chromium.launch();
@@ -28,7 +28,16 @@ export async function capture({
       reducedMotion: 'reduce',
     });
     const page = await context.newPage();
-    await page.goto(url, { waitUntil: waitForNetworkIdle ? 'networkidle' : 'load' });
+    // 'networkidle' never fires against a dev server with a live websocket
+    // (Nuxt/Vite HMR keeps the socket open) → page.goto times out. When
+    // network-idle waiting is disabled we wait for 'domcontentloaded' and
+    // then settle for a fixed interval so async render/data still lands.
+    if (waitForNetworkIdle) {
+      await page.goto(url, { waitUntil: 'networkidle' });
+    } else {
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      if (settleMs > 0) await page.waitForTimeout(settleMs);
+    }
     await page.addStyleTag({ content: ANTI_MOTION_CSS });
     if (waitForFonts) {
       await page.evaluate(() => document.fonts?.ready);
@@ -58,7 +67,9 @@ async function main() {
     .option('--selector <sel>', 'CSS selector (omit for viewport capture)')
     .requiredOption('--out <path>', 'Output PNG path')
     .option('--width <n>', 'Viewport width', '1440')
-    .option('--height <n>', 'Viewport height', '900');
+    .option('--height <n>', 'Viewport height', '900')
+    .option('--no-network-idle', "Don't wait for network idle; use domcontentloaded + settle (required for HMR dev servers like Nuxt/Vite)")
+    .option('--settle <ms>', 'Settle delay after domcontentloaded when network-idle wait is off', '500');
   program.parse(process.argv);
   const opts = program.opts();
   await capture({
@@ -66,6 +77,8 @@ async function main() {
     selector: opts.selector || null,
     viewport: { width: Number(opts.width), height: Number(opts.height) },
     out: opts.out,
+    waitForNetworkIdle: opts.networkIdle !== false,
+    settleMs: Number(opts.settle),
   });
   console.log(JSON.stringify({ out: opts.out, ok: true }));
 }

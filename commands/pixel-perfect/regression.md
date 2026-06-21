@@ -38,16 +38,19 @@ If no baseline available → error with instructions
 
 ## Phase 3: Compare
 
-1. Run `diff.mjs` with same masks as original
-2. Calculate mismatch percentage
-3. Compare to baseline mismatch (from results.tsv iter 0 or last successful)
+1. Run `diff.mjs` with the SAME masks as the original (same `--masks` and same
+   `--max-masked` cap). Do not add masks here — adding masks at regression time
+   hides drift.
+2. Read `report.result.mismatch_pct`, `report.result.masked_pct`, and
+   `report.result.passed` from the report.
+3. Compare to baseline mismatch (from results.tsv iter 0 or last successful).
 
 ## Phase 4: Verdict
 
 Calculate verdict based on:
-- **STABLE** — mismatch < 2% (or < fail-on threshold)
-- **UNSTABLE** — mismatch >= 2% (or >= fail-on threshold)
-- **DRIFT** — mismatch increased >1% from baseline
+- **STABLE** — `report.result.passed === true` (mismatch < 2% or < fail-on threshold, AND masking under the cap).
+- **UNSTABLE** — `passed === false`: mismatch >= 2% (or >= fail-on threshold), OR `result.warning === "excessive_masking"` (masked_pct over cap). A low mismatch with the masking warning is UNSTABLE, not STABLE.
+- **DRIFT** — mismatch increased >1% from baseline, or `masked_pct` increased materially from baseline.
 
 ## Output
 

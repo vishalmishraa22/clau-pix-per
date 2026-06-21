@@ -16,7 +16,13 @@ Likely **non-deterministic capture**. Check:
 - Video/autoplay content — capture different frames.
 - `prefers-reduced-motion` not honored.
 
-Fix: set `waitUntil: 'networkidle'` (default in `capture.mjs`), add a `page.waitForTimeout(500)` after `fonts.ready` as a last resort.
+Fix: keep network-idle waiting on (the default) so late requests settle before capture; add a `page.waitForTimeout(500)` after `fonts.ready` as a last resort. NOTE: do not enable network-idle for HMR dev servers — see the next entry.
+
+## capture.mjs hangs / times out on a dev server (HMR)
+
+`capture.mjs` defaults to `waitUntil: 'networkidle'`. A live HMR dev server (Nuxt, Vite, Next, Storybook) keeps a websocket/EventSource open for hot reload, so the network **never** goes idle and `page.goto` times out (~30s) before any screenshot is taken.
+
+Fix: pass `--no-network-idle` to `capture.mjs`. It then waits for `domcontentloaded` and a fixed settle delay (`--settle <ms>`, default 500) instead. Programmatic callers pass `capture({ ..., waitForNetworkIdle: false, settleMs })`. Use this for any HMR dev server; keep network-idle on for static/preview servers where you want late requests to settle.
 
 ## Dev server not running
 
